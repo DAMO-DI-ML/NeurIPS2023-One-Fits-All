@@ -12,6 +12,10 @@ The proposed method outperforms other models on most tasks, including [long-term
 
 <div align="center"><img src=./pic/main_result.png width=60% /></div>
 
+## Get Start
+
+- Install Python>=3.8, PyTorch 1.8.1.
+- Follow the instructions provided in the respective task folder.
 
 
 ## Citation
