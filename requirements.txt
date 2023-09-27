@@ -13,4 +13,3 @@ statsmodels==0.13.2
 sympy==1.11.1
 torch==1.8.1
 transformers==4.30.1
-einops==0.4.0
