@@ -1,7 +1,11 @@
 from data_provider.data_factory import data_provider
 from exp.exp_basic import Exp_Basic
-from utils.tools import EarlyStopping, adjust_learning_rate, visual
-from utils.metrics import metric
+from utils.tools import EarlyStopping, adjust_learning_rate, adjustment
+from sklearn.metrics import precision_recall_fscore_support
+from sklearn.metrics import accuracy_score
+import torch.multiprocessing
+
+torch.multiprocessing.set_sharing_strategy('file_system')
 import torch
 import torch.nn as nn
 from torch import optim
@@ -9,14 +13,13 @@ import os
 import time
 import warnings
 import numpy as np
-from tqdm import tqdm
 
 warnings.filterwarnings('ignore')
 
 
-class Exp_Imputation(Exp_Basic):
+class Exp_Anomaly_Detection(Exp_Basic):
     def __init__(self, args):
-        super(Exp_Imputation, self).__init__(args)
+        super(Exp_Anomaly_Detection, self).__init__(args)
 
     def _build_model(self):
         model = self.model_dict[self.args.model].Model(self.args).float()
@@ -30,7 +33,7 @@ class Exp_Imputation(Exp_Basic):
         return data_set, data_loader
 
     def _select_optimizer(self):
-        model_optim = optim.Adam(self.model.parameters(), lr=self.args.learning_rate, weight_decay=self.args.weight)
+        model_optim = optim.Adam(self.model.parameters(), lr=self.args.learning_rate)
         return model_optim
 
     def _select_criterion(self):
@@ -41,26 +44,17 @@ class Exp_Imputation(Exp_Basic):
         total_loss = []
         self.model.eval()
         with torch.no_grad():
-            for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in tqdm(enumerate(vali_loader)):
+            for i, (batch_x, _) in enumerate(vali_loader):
                 batch_x = batch_x.float().to(self.device)
-                batch_x_mark = batch_x_mark.float().to(self.device)
 
-                # random mask
-                B, T, N = batch_x.shape
-                mask = torch.rand((B, T, N)).to(self.device)
-                mask[mask <= self.args.mask_rate] = 0  # masked
-                mask[mask > self.args.mask_rate] = 1  # remained
-                inp = batch_x.masked_fill(mask == 0, 0)
-
-                outputs = self.model(inp, batch_x_mark, None, None, mask)
+                outputs = self.model(batch_x, None, None, None)
 
                 f_dim = -1 if self.args.features == 'MS' else 0
                 outputs = outputs[:, :, f_dim:]
                 pred = outputs.detach().cpu()
                 true = batch_x.detach().cpu()
-                mask = mask.detach().cpu()
 
-                loss = criterion(pred[mask == 0], true[mask == 0])
+                loss = criterion(pred, true)
                 total_loss.append(loss)
         total_loss = np.average(total_loss)
         self.model.train()
@@ -89,25 +83,17 @@ class Exp_Imputation(Exp_Basic):
 
             self.model.train()
             epoch_time = time.time()
-            for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in tqdm(enumerate(train_loader)):
+            for i, (batch_x, batch_y) in enumerate(train_loader):
                 iter_count += 1
                 model_optim.zero_grad()
 
                 batch_x = batch_x.float().to(self.device)
-                batch_x_mark = batch_x_mark.float().to(self.device)
 
-                # random mask
-                B, T, N = batch_x.shape
-                mask = torch.rand((B, T, N)).to(self.device)
-                mask[mask <= self.args.mask_rate] = 0  # masked
-                mask[mask > self.args.mask_rate] = 1  # remained
-                inp = batch_x.masked_fill(mask == 0, 0)
-
-                outputs = self.model(inp, batch_x_mark, None, None, mask)
+                outputs = self.model(batch_x, None, None, None)
 
                 f_dim = -1 if self.args.features == 'MS' else 0
                 outputs = outputs[:, :, f_dim:]
-                loss = criterion(outputs[mask == 0], batch_x[mask == 0])
+                loss = criterion(outputs, batch_x)
                 train_loss.append(loss.item())
 
                 if (i + 1) % 100 == 0:
@@ -141,69 +127,81 @@ class Exp_Imputation(Exp_Basic):
 
     def test(self, setting, test=0):
         test_data, test_loader = self._get_data(flag='test')
+        train_data, train_loader = self._get_data(flag='train')
         if test:
             print('loading model')
             self.model.load_state_dict(torch.load(os.path.join('./checkpoints/' + setting, 'checkpoint.pth')))
 
-        preds = []
-        trues = []
-        masks = []
+        attens_energy = []
         folder_path = './test_results/' + setting + '/'
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
 
         self.model.eval()
+        self.anomaly_criterion = nn.MSELoss(reduce=False)
+
+        # (1) stastic on the train set
         with torch.no_grad():
-            for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in tqdm(enumerate(test_loader)):
+            for i, (batch_x, batch_y) in enumerate(train_loader):
                 batch_x = batch_x.float().to(self.device)
-                batch_x_mark = batch_x_mark.float().to(self.device)
+                # reconstruction
+                outputs = self.model(batch_x, None, None, None)
+                # criterion
+                score = torch.mean(self.anomaly_criterion(batch_x, outputs), dim=-1)
+                score = score.detach().cpu().numpy()
+                attens_energy.append(score)
 
-                # random mask
-                B, T, N = batch_x.shape
-                mask = torch.rand((B, T, N)).to(self.device)
-                mask[mask <= self.args.mask_rate] = 0  # masked
-                mask[mask > self.args.mask_rate] = 1  # remained
-                inp = batch_x.masked_fill(mask == 0, 0)
+        attens_energy = np.concatenate(attens_energy, axis=0).reshape(-1)
+        train_energy = np.array(attens_energy)
 
-                # imputation
-                outputs = self.model(inp, batch_x_mark, None, None, mask)
+        # (2) find the threshold
+        attens_energy = []
+        test_labels = []
+        for i, (batch_x, batch_y) in enumerate(test_loader):
+            batch_x = batch_x.float().to(self.device)
+            # reconstruction
+            outputs = self.model(batch_x, None, None, None)
+            # criterion
+            score = torch.mean(self.anomaly_criterion(batch_x, outputs), dim=-1)
+            score = score.detach().cpu().numpy()
+            attens_energy.append(score)
+            test_labels.append(batch_y)
 
-                # eval
-                f_dim = -1 if self.args.features == 'MS' else 0
-                outputs = outputs[:, :, f_dim:]
-                outputs = outputs.detach().cpu().numpy()
-                pred = outputs
-                true = batch_x.detach().cpu().numpy()
-                preds.append(pred)
-                trues.append(true)
-                masks.append(mask.detach().cpu())
+        attens_energy = np.concatenate(attens_energy, axis=0).reshape(-1)
+        test_energy = np.array(attens_energy)
+        combined_energy = np.concatenate([train_energy, test_energy], axis=0)
+        threshold = np.percentile(combined_energy, 100 - self.args.anomaly_ratio)
+        print("Threshold :", threshold)
 
-                if i % 20 == 0:
-                    filled = true[0, :, -1].copy()
-                    filled = filled * mask[0, :, -1].detach().cpu().numpy() + \
-                             pred[0, :, -1] * (1 - mask[0, :, -1].detach().cpu().numpy())
-                    visual(true[0, :, -1], filled, os.path.join(folder_path, str(i) + '.pdf'))
+        # (3) evaluation on the test set
+        pred = (test_energy > threshold).astype(int)
+        test_labels = np.concatenate(test_labels, axis=0).reshape(-1)
+        test_labels = np.array(test_labels)
+        gt = test_labels.astype(int)
 
-        preds = np.concatenate(preds, 0)
-        trues = np.concatenate(trues, 0)
-        masks = np.concatenate(masks, 0)
-        print('test shape:', preds.shape, trues.shape)
+        print("pred:   ", pred.shape)
+        print("gt:     ", gt.shape)
 
-        # result save
-        folder_path = './results/' + setting + '/'
-        if not os.path.exists(folder_path):
-            os.makedirs(folder_path)
+        # (4) detection adjustment
+        gt, pred = adjustment(gt, pred)
 
-        mae, mse, rmse, mape, mspe = metric(preds[masks == 0], trues[masks == 0])
-        print('mse:{}, mae:{}'.format(mse, mae))
-        f = open("result_imputation.txt", 'a')
+        pred = np.array(pred)
+        gt = np.array(gt)
+        print("pred: ", pred.shape)
+        print("gt:   ", gt.shape)
+
+        accuracy = accuracy_score(gt, pred)
+        precision, recall, f_score, support = precision_recall_fscore_support(gt, pred, average='binary')
+        print("Accuracy : {:0.4f}, Precision : {:0.4f}, Recall : {:0.4f}, F-score : {:0.4f} ".format(
+            accuracy, precision,
+            recall, f_score))
+
+        f = open("result_anomaly_detection.txt", 'a')
         f.write(setting + "  \n")
-        f.write('mse:{}, mae:{}'.format(mse, mae))
+        f.write("Accuracy : {:0.4f}, Precision : {:0.4f}, Recall : {:0.4f}, F-score : {:0.4f} ".format(
+            accuracy, precision,
+            recall, f_score))
         f.write('\n')
         f.write('\n')
         f.close()
-
-        np.save(folder_path + 'metrics.npy', np.array([mae, mse, rmse, mape, mspe]))
-        np.save(folder_path + 'pred.npy', preds)
-        np.save(folder_path + 'true.npy', trues)
         return
