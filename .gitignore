@@ -9,3 +9,4 @@ Zero-shot_Learning/datasets
 *checkpoints*
 *__pycache__*
 *.ipynb_checkpoints*
+*/.DS_Store

@@ -17,7 +17,7 @@ python main.py \
     --label_len 48 \
     --pred_len $pred_len \
     --batch_size 256 \
-    --learning_rate 0.002 \
+    --learning_rate 0.0001 \
     --train_epochs 10 \
     --decay_fac 0.75 \
     --d_model 768 \

@@ -4,11 +4,11 @@ export CUDA_VISIBLE_DEVICES=0
 seq_len=336
 model=GPT4TS
 
-for percent in 5 10
+for percent in 100
 do
 for pred_len in 96 192 336 720
 do
-for lr in 100
+for lr in 0.0001
 do
 
 python main.py \
