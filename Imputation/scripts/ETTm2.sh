@@ -16,7 +16,7 @@ python -u run.py \
   --enc_in 7 \
   --dec_in 7 \
   --c_out 7 \
-  --gpt_layer 6 \
+  --gpt_layer 3 \
   --batch_size 8 \
   --d_model 768 \
   --patch_size 1 \
@@ -43,7 +43,7 @@ python -u run.py \
   --enc_in 7 \
   --dec_in 7 \
   --c_out 7 \
-  --gpt_layer 6 \
+  --gpt_layer 3 \
   --batch_size 8 \
   --d_model 768 \
   --patch_size 1 \
@@ -70,7 +70,7 @@ python -u run.py \
   --enc_in 7 \
   --dec_in 7 \
   --c_out 7 \
-  --gpt_layer 6 \
+  --gpt_layer 3 \
   --batch_size 8 \
   --d_model 768 \
   --patch_size 1 \
@@ -97,7 +97,7 @@ python -u run.py \
   --enc_in 7 \
   --dec_in 7 \
   --c_out 7 \
-  --gpt_layer 6 \
+  --gpt_layer 3 \
   --batch_size 8 \
   --d_model 768 \
   --patch_size 1 \

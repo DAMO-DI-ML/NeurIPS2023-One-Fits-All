@@ -17,7 +17,7 @@ python -u run.py \
   --pred_len 0 \
   --patch_size 1 \
   --stride 1 \
-  --gpt_layer 6 \
+  --gpt_layer 3 \
   --d_model 768 \
   --enc_in 321 \
   --dec_in 321 \
@@ -43,7 +43,7 @@ python -u run.py \
   --pred_len 0 \
   --patch_size 1 \
   --stride 1 \
-  --gpt_layer 6 \
+  --gpt_layer 3 \
   --d_model 768 \
   --enc_in 321 \
   --dec_in 321 \
@@ -69,7 +69,7 @@ python -u run.py \
   --pred_len 0 \
   --patch_size 1 \
   --stride 1 \
-  --gpt_layer 6 \
+  --gpt_layer 3 \
   --d_model 768 \
   --enc_in 321 \
   --dec_in 321 \
@@ -95,7 +95,7 @@ python -u run.py \
   --pred_len 0 \
   --patch_size 1 \
   --stride 1 \
-  --gpt_layer 6 \
+  --gpt_layer 3 \
   --d_model 768 \
   --enc_in 321 \
   --dec_in 321 \
