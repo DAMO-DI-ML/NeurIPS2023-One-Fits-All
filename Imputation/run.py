@@ -99,7 +99,7 @@ parser.add_argument('--gpt_layers', type=int, default=6)
 parser.add_argument('--ln', type=int, default=0)
 parser.add_argument('--mlp', type=int, default=0)
 parser.add_argument('--weight', type=float, default=0)
-parser.add_argument('--percent', type=int, default=5)
+parser.add_argument('--percent', type=int, default=100)
 
 args = parser.parse_args()
 args.use_gpu = True if torch.cuda.is_available() and args.use_gpu else False
